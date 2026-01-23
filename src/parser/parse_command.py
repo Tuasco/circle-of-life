@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-
-from execute_command import graceful_exit, execute_command_no_op
+from execute_command import graceful_exit, display_help, execute_command_no_op
 
 # Commands have the following pattern : (ACTION_TOKEN) (TARGET_TOKEN) [integer]
 ACTION_TOKENS = ["add", "list", "delete"]
 QUIT_TOKENS = ["quit", "exit", "stop"]
+HELP_TOKENS = ["help", "?"]
 TARGET_TOKENS = ["prey", "predator"]
 
 # Functions corresponding to parsed words' positions
@@ -17,14 +17,19 @@ WORKERS = [
 def parse_command(command: str):
     words = command.split(" ")
     worker_index = [0, 0]
-    worker_iterations = 1
+    command_arg = 1
 
     for i, word in enumerate(words):
         word = word.lower()
 
-        # If stop is given, do not go through the normal parsing path, just exit
+        # If stop is given, do not go through the normal parsing pipeline, just exit
         if i == 0 and word in QUIT_TOKENS:
             graceful_exit()
+            return
+        
+        # If help is given, do not go through normal parsing pipeline, display help only
+        if i == 0 and word in HELP_TOKENS:
+            display_help()
             return
 
         # The first word must be an action token
@@ -58,21 +63,24 @@ def parse_command(command: str):
             continue
 
         if i == 2:
-            worker_iterations = int(word)  # Should work, already verified that it is a string
+            command_arg = int(word)  # Should work, already verified that it is a string
             break  # Not necessary, should be the last word anyway
 
     # Execute parsed command
-    for _ in range(worker_iterations):
-        WORKERS[worker_index[0]][worker_index[1]]()
+    WORKERS[worker_index[0]][worker_index[1]](command_arg)
 
     return
 
-def main():
-    try:
-        while True:
-            parse_command(input("> "))
-    except KeyboardInterrupt, EOFError:
-        graceful_exit(new_line=True)
+def main(standalone_mode: bool = False):
+    if standalone_mode:
+        try:
+            print("*** Honishell Ready - Parsing Command ***")
+            while True:
+                parse_command(input("> "))
+        except KeyboardInterrupt, EOFError:
+            graceful_exit(new_line=True)
+            
+        return
             
 if __name__ == "__main__":
-    main()
+    main(standalone_mode=True)
