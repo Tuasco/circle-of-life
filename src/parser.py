@@ -1,13 +1,71 @@
 #!/usr/bin/env python3
 import sys
+from multiprocessing import Process
+from threading import Thread
+
+from individual import IndividualType, main as individual_main
+
 
 def execute_command_no_op(arg: int, env):
     print("execute_command_no_op with argument {}".format(arg))
 
+def add_preys(arg: int, env):
+    for _ in range(arg):
+        process = Process(target=individual_main, args=(IndividualType.PREY,))
+        env.preys_processes.append(process)
+        process.start()
+
+    print(f"Successfully added {arg} prey(s)")
+
+def add_predators(arg: int, env):
+    for _ in range(arg):
+        process = Process(target=individual_main, args=(IndividualType.PREDATOR,))
+        env.predators_processes.append(process)
+        process.start()
+        
+    print(f"Successfully added {arg} predator(s)")
+
+def list_preys(_, env):
+    if not env.preys_processes:
+        print("No preys currently in.")
+        return
+
+    print("Preys in the simulation:")
+    for prey in env.preys_processes:
+        prey: Process
+        print(f"{prey.name} ({int(prey.pid)})")    
+
+def list_predators(_, env):
+    if not env.predators_processes:
+        print("No predators currently in.")
+        return
+    
+    print("Predators in the simulation:")
+    for predator in env.predators_processes:
+        predator: Process
+        print(f"{predator.name} ({int(predator.pid)})")
+
 def graceful_exit(env, new_line: bool = False):
     print("{}Exiting...".format('\n' if new_line else ''))
     
-    # Stop env
+    # Stop socket listening thread
+    env.socket_thread: Thread
+    env.socket_thread.join(timeout=0)
+    
+    # Clear preys and predators processes
+    # This could be improved by joining them in parallel
+    for proc in env.predators_processes:
+        proc: Process
+        proc.terminate()
+        proc.join()
+        proc.close()
+
+    for proc in env.preys_processes:
+        proc: Process
+        proc.terminate()
+        proc.join()
+        proc.close()
+    
     env.send_queue.put("quit")
     env.send_queue.close()
     env.recv_queue.close()
@@ -48,8 +106,8 @@ TARGET_TOKENS = ["prey", "predator"]
 
 # Functions corresponding to parsed words' positions
 WORKERS = [
-    [execute_command_no_op, execute_command_no_op],
-    [execute_command_no_op, execute_command_no_op],
+    [add_preys, add_predators],
+    [list_preys, list_predators],
     [execute_command_no_op, execute_command_no_op],
 ]
 
