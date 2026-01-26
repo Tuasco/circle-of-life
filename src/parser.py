@@ -6,25 +6,43 @@ from threading import Thread
 from individual import IndividualType, main as individual_main
 
 
+# TODO implement delete and get rid of no_op
 def execute_command_no_op(arg: int, env):
     print("execute_command_no_op with argument {}".format(arg))
 
 def add_preys(arg: int, env):
+    added: int = 0
+    
     for _ in range(arg):
+        # We technically could still add them as they'd kill themselves, but this is nicer for the user
+        if not len(env.free_ids):
+            print("Cannot add more individuals")
+            break
+            
+        added += 1
         process = Process(target=individual_main, args=(IndividualType.PREY,))
         env.preys_processes.append(process)
         process.start()
 
-    print(f"Successfully added {arg} prey(s)")
+    print(f"{added} prey(s) added")
 
 def add_predators(arg: int, env):
+    added: int = 0
+    
     for _ in range(arg):
+        # Same as add_preys() here
+        if not len(env.free_ids):
+            print("Cannot add more individuals")
+            break
+            
+        added += 1        
         process = Process(target=individual_main, args=(IndividualType.PREDATOR,))
         env.predators_processes.append(process)
         process.start()
         
-    print(f"Successfully added {arg} predator(s)")
+    print(f"{added} predator(s) added")
 
+# TODO Change list implemetation (look at the shared memory insteads)
 def list_preys(_, env):
     if not env.preys_processes:
         print("No preys currently in.")
@@ -65,7 +83,10 @@ def graceful_exit(env, new_line: bool = False):
         proc.terminate()
         proc.join()
         proc.close()
-    
+
+    env.mapfile.close()
+    env.memory.unlink()
+    env.sem.unlink()
     env.send_queue.put("quit")
     env.send_queue.close()
     env.recv_queue.close()

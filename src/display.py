@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from multiprocessing import Process
+from time import sleep
 
 from env_manager import main as env_main
 from message_queue import MessageQueue
@@ -42,6 +43,7 @@ def main():
         print()
         display.env_send_queue.put("quit") #Tell env to wrap up
         display.env_recv_queue.get(timeout=5) #Wait env tells us he's done (or timeout)
+        sleep(.2) #Wait a bit more for env to actually finish its exit sequence
     finally:
         # Close everything on our end
         display.env_process.terminate()

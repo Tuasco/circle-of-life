@@ -3,10 +3,12 @@
 Message Queue wrapper using POSIX message queues.
 Provides the same interface as multiprocessing.Queue for compatibility.
 """
-import posix_ipc
 from typing import Optional
 
+import posix_ipc
 
+
+# TODO get rid of this class, maybe ? 
 class MessageQueue:
     """
     Wrapper around POSIX message queue with Queue-like interface.
