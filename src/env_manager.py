@@ -1,9 +1,11 @@
 #!/usr/bin/env false
 import signal
-from multiprocessing import Queue, Process
+from multiprocessing import Process
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR
 from threading import Thread
 
+from individual import IndividualType
+from message_queue import MessageQueue
 from parser import parse_command
 
 LISTEN_ADDRESS = "127.0.0.1"
@@ -11,10 +13,10 @@ LISTEN_PORT = 15789
 LISTEN_LIMIT = 5
 
 class EnvState:
-    def __init__(self, send_queue: Queue, recv_queue: Queue):
+    def __init__(self, send_queue: MessageQueue, recv_queue: MessageQueue):
         # Configure parser and coms with display
-        self.send_queue: Queue = send_queue
-        self.recv_queue: Queue = recv_queue
+        self.send_queue: MessageQueue = send_queue
+        self.recv_queue: MessageQueue = recv_queue
         self.parser_thread: Thread = Thread(target=display_listener, args=(self,))
         self.parser_thread.start()
         
@@ -53,17 +55,21 @@ def add_client(env: EnvState, client_socket: socket, client_address: tuple[str, 
     
     #TODO Share memory with the joined process
     match client_socket.recv(1024).decode().strip():
-        case "prey":
+        case IndividualType.PREY.value:
             print("sharing memory with new prey")
-        case "predator":
+        case IndividualType.PREDATOR.value:
             print("sharing memory with new predator")
         case _: pass
 
     client_socket.shutdown(SHUT_RDWR)
     client_socket.close()
 
-def main(recv_queue: Queue, send_queue: Queue):
+def main():
     # Catch SIG_INT as display handles it. This file is not meant to be executed anyway, hence the shebang.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-    
+
+    # Connect to message queues created by display
+    send_queue = MessageQueue("/env_recv", create=False)
+    recv_queue = MessageQueue("/env_send", create=False)
+
     env = EnvState(send_queue, recv_queue)

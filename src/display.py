@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
-from multiprocessing import Process, Queue
+from multiprocessing import Process
 
 from env_manager import main as env_main
+from message_queue import MessageQueue
 
 
 class Display:
     def __init__(self):
-        # Start env process
-        self.env_send_queue = Queue()
-        self.env_recv_queue = Queue()
-        self.env_process = Process(target=env_main, args=(self.env_send_queue, self.env_recv_queue))
+        # Start env process with POSIX message queues
+        self.env_send_queue = MessageQueue("/env_send", create=True)
+        self.env_recv_queue = MessageQueue("/env_recv", create=True)
+        self.env_process = Process(target=env_main, args=())
         self.env_process.start()
         
 def main():
@@ -20,17 +21,17 @@ def main():
     GREEN = "\033[92m"
     RESET = "\033[0m"
 
-    print(f"{BOLD_YELLOW}*** Honishell Ready - Parsing Command ***{RESET}")
+    print(f"{BOLD_YELLOW}*** Honishell Ready - Parsing Commands ***{RESET}")
     try:
         while True:
             # Wait for command then send it
-            command = input(f"{GREEN}> {RESET}")
+            command = input(f"{GREEN}>{RESET} ")
             display.env_send_queue.put(command)
         
             # Wait for response, until env is done parsing. This is basically syncing
             msg = display.env_recv_queue.get()
             
-            # For some reason if env tells us to quit, we do. This should never happen tho
+            # If env tells us to quit, we do. This should only happen when we receive a quit token 
             if msg == "quit":
                 break
             
@@ -47,6 +48,9 @@ def main():
         display.env_process.join()
         display.env_send_queue.close()
         display.env_recv_queue.close()
+        # Clean up message queues
+        display.env_send_queue.unlink()
+        display.env_recv_queue.unlink()
     
 if __name__ == "__main__":
     main()

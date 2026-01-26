@@ -18,21 +18,21 @@ This file documents agents, commands, and code style guidelines for the project.
 - **Format Code**: `black .` - Applies Black formatter to all Python files (installed in venv).
 - **Check Formatting**: `black --check .` - Verifies if code is formatted without changes.
 - **Linting**: No dedicated linter configured (e.g., no flake8); rely on Black and manual review.
-- **Type Checking**: `mypy src/` - Runs MyPy for type hints (if installed; otherwise, install with `pip install mypy`).
-- **All Checks**: Run `black --check . && python -m py_compile src/*.py` for basic validation.
+- **Type Checking**: `mypy src/` - Runs MyPy for type hints (installed in venv).
+- **All Checks**: Run `black --check . && python -m py_compile src/*.py && mypy src/` for comprehensive validation.
 
 ### Test Commands
-- **Run All Tests**: `pytest` - Executes all tests (assumes pytest installed; install with `pip install pytest` if needed).
-- **Run Tests in Directory**: `pytest tests/` - Runs tests in the tests/ directory (create if absent).
-- **Run Single Test**: `pytest path/to/test_file.py::test_function_name` - Executes a specific test function.
+- **Run All Tests**: `pytest` - Executes all tests (install with `pip install pytest` if needed).
+- **Run Tests in Directory**: `pytest tests/` - Runs tests in the tests/ directory.
+- **Run Single Test**: `pytest tests/test_file.py::test_function_name` - Executes a specific test function.
 - **Run Tests with Coverage**: `pytest --cov=src` - Runs tests with coverage report (install pytest-cov first).
 - **Verbose Output**: `pytest -v` - Detailed test output.
-- **Setup Tests**: If no tests exist, create `tests/` directory and files like `test_display.py` with functions prefixed with `test_`.
+- **Setup Tests**: Create `tests/` directory with files like `test_display.py` with functions prefixed with `test_`.
 
 ### Environment Setup
 - **Activate Venv**: `source .venv/bin/activate` (Linux/Mac) or `.venv\Scripts\activate` (Windows).
-- **Install Dependencies**: `pip install -r requirements.txt` (create if needed; currently none listed).
-- **Update Venv**: `pip install black` (already present).
+- **Current Dependencies** (in venv): black, mypy_extensions, posix_ipc (for POSIX message queues).
+- **Add Dependency**: `pip install package_name` (update requirements.txt if one is created).
 
 ### Other Useful Commands
 - **Git Status**: `git status` - Check repo state.
@@ -46,7 +46,7 @@ This file documents agents, commands, and code style guidelines for the project.
 - Follow PEP 8 (Python Enhancement Proposal 8) for overall style.
 - Use Black for automatic formatting (line length 88 chars, double quotes for strings).
 - Prioritize readability, maintainability, and consistency.
-- Write code for Python 3.8+ (based on venv setup).
+- Write code for Python 3.8+ (tested with Python 3.14).
 - No external rules from Cursor (.cursor/rules/ or .cursorrules not found) or Copilot (.github/copilot-instructions.md not found).
 
 ### Imports
@@ -131,17 +131,17 @@ This file documents agents, commands, and code style guidelines for the project.
 - **Commits**: Use imperative mood (e.g., "Add parser function"); reference issues if applicable.
 
 ### Project-Specific Notes
-- **Architecture Overview**: Simulation of prey, predators, and grass. Display (parent process) spawns Env (state manager) and handles interpreter, display, and threading for blocking ops (HTTP socket for joining prey/predators, MQ to Env, signals, timer). Env sends full state snapshots via MQ. Prey/predators join via HTTP POST (version/role → ID response), then communicate with Env via shared memory.
+- **Architecture Overview**: Simulation of prey, predators, and grass. Display (parent process) spawns Env (state manager) and handles interpreter, display, and threading for blocking ops (socket for joining prey/predators, POSIX MQ to Env, signals, timer). Env sends full state snapshots via POSIX MQ. Prey/predators join via socket (role → ID response), then communicate with Env via shared memory.
+- **Communication**: POSIX message queues (via `message_queue.py`) for Display-Env, shared memory for prey/predator-Env, sockets only for joining.
 - **Threading in Display**: At least threads for socket listener, MQ listener, signal handler, and timer.
 - **Threading in Env**: At least 4 threads: MQ listener (from Display), timer/signal, socket for joining, main loop (grass management).
-- **Interpreter**: Manual add/remove/list prey/predators; sends commands to Env via MQ.
-- **Communication**: MQ for Display-Env (snapshots), shared memory for prey/predator-Env, socket only for joining.
+- **Message Queues**: Use `MessageQueue` class (`src/message_queue.py`) which wraps POSIX IPC message queues with Queue-like interface.
+- **Individual Processes**: Launched by parser via `Process(target=individual_main, args=(IndividualType.PREY/PREDATOR,))`. Support `verbose=True` flag for debugging.
 - **Based on `display.py`**: Use `__` for internal functions; avoid tuple assignments (use lists).
 - Simulation Context: Handle multiprocessing safely (MQ for inter-process, shared mem carefully); no locks in Env except for shared memory.
-- Future: Add GUI/display logic in separate module.
 
 ### Enforcement
-- Run `black . && mypy src/` before PRs.
+- Run `black . && python -m py_compile src/*.py && mypy src/` before PRs.
 - Use pre-commit hooks if set up (none currently).
 - Review: Ensure style in code reviews.
 
