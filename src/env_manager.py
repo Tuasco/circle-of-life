@@ -2,9 +2,11 @@
 import mmap
 import signal
 import struct
-from multiprocessing import Process
+from multiprocessing import Process, Lock
+from random import randint
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR
 from threading import Thread
+from time import sleep
 
 import posix_ipc
 
@@ -14,6 +16,11 @@ from parser import parse_command
 LISTEN_ADDRESS = "127.0.0.1"
 LISTEN_PORT = 15789
 LISTEN_LIMIT = 5
+
+MIN_GRASS_WAIT = 1
+MAX_GRASS_WAIT = 5
+SHIT_HAPPENS_INTERVAL = 40
+SHIT_HAPPENS_DURATION = 3
 
 POPULATION_LIMIT = 10
 GRASS_LIMIT = 4
@@ -32,8 +39,6 @@ class EnvState:
         # Configure thread to accept preys and predators
         self.socket_thread: Thread = Thread(target=socket_listener, args=(self,))
         self.socket_thread.start()
-        
-        # Configure preys and predators processes lists
         self.preys_processes: dict[int, Process] = {}
         self.predators_processes: dict[int, Process] = {}
 
@@ -43,20 +48,31 @@ class EnvState:
         self.mapfile.seek(0)
         self.mapfile.write(b'\x00' * TOTAL_SIZE)
         self.sem = posix_ipc.Semaphore(SEM_NAME, posix_ipc.O_CREAT, initial_value=1)
-        
         # Initialise grass value
         self.mapfile.seek(0)
         self.mapfile.write(struct.pack("i", GRASS_LIMIT))
-
         # Simple stack of free IDs
         self.free_ids = list(range(POPULATION_LIMIT))
         self.population_limit = POPULATION_LIMIT #Needed for parser
+
+        # Configure grass growth
+        self.grass_thread = Thread(target=grass, args=(self,))
+        self.grass_thread.start()
+        # Configure drought episodes
+        self.drought_lock = Lock()
+        self.drought_remaining = 0
+        signal.signal(signal.SIGALRM, self.handle_shit_happened)
+        signal.setitimer(signal.ITIMER_REAL, SHIT_HAPPENS_INTERVAL, SHIT_HAPPENS_INTERVAL)
 
     def get_free_id(self) -> int | None:
         return self.free_ids.pop(0) if self.free_ids else None
 
     def return_id(self, returned_id: int):
         self.free_ids.append(returned_id)
+
+    def handle_shit_happened(self, signum, frame):
+        with self.drought_lock:
+            self.drought_remaining = SHIT_HAPPENS_DURATION
 
 
 def display_listener(env):
@@ -88,6 +104,30 @@ def add_client(env: EnvState, client_socket: socket, client_address: tuple[str, 
 
     client_socket.shutdown(SHUT_RDWR)
     client_socket.close()
+
+
+def grass(env: EnvState):
+    while True:
+        sleep(randint(MIN_GRASS_WAIT, MAX_GRASS_WAIT))
+        
+        # Check if a drought episode is occuring
+        # Aquiring the lock before reading would prevent a TOCTOU, but it wouldn't be an issue regardless
+        if env.drought_remaining > 0:
+            with env.drought_lock:
+                env.drought_remaining -= 1
+            continue
+        
+        # Add one grass (stonks)
+        current_grass = 0
+        with env.sem:
+            env.mapfile.seek(0)
+            current_grass = struct.unpack("=i", env.mapfile.read(4))[0]
+            
+            if current_grass < GRASS_LIMIT:
+                env.mapfile.seek(0)
+                env.mapfile.write(struct.pack("i", current_grass + 1))
+        
+    return
 
 def main():
     # Catch SIG_INT as display handles it. This file is not meant to be executed anyway, hence the shebang.

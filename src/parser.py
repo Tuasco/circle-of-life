@@ -5,13 +5,13 @@ from runtime import *
 ACTION_TOKENS = ["add", "list", "delete"]
 QUIT_TOKENS = ["quit", "exit", "stop"]
 HELP_TOKENS = ["help", "?"]
-TARGET_TOKENS = ["prey", "predator", "all"]
+TARGET_TOKENS = ["prey", "predator", "all", "gra"] #Not grass because of the strip("s")
 
 # Functions corresponding to parsed words' positions
 WORKERS = [
-    [add_preys, add_predators, add_all],
-    [list_preys, list_predators, list_all],
-    [delete_preys, delete_predators, delete_all],
+    [add_preys, add_predators, add_all, add_grass],
+    [list_preys, list_predators, list_all, list_grass],
+    [delete_preys, delete_predators, delete_all, delete_grass],
 ]
 
 def parse_command(command: str, env):
