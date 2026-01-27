@@ -2,15 +2,16 @@
 from multiprocessing import Process
 from time import sleep
 
+import posix_ipc
+
 from env_manager import main as env_main
-from message_queue import MessageQueue
 
 
 class Display:
     def __init__(self):
         # Start env process with POSIX message queues
-        self.env_send_queue = MessageQueue("/env_send", create=True)
-        self.env_recv_queue = MessageQueue("/env_recv", create=True)
+        self.env_send_queue = posix_ipc.MessageQueue("/env_send", flags=posix_ipc.O_CREAT, max_messages=10, max_message_size=8192)
+        self.env_recv_queue = posix_ipc.MessageQueue("/env_recv", flags=posix_ipc.O_CREAT, max_messages=10, max_message_size=8192)
         self.env_process = Process(target=env_main, args=())
         self.env_process.start()
         
@@ -27,10 +28,11 @@ def main():
         while True:
             # Wait for command then send it
             command = input(f"{GREEN}>{RESET} ")
-            display.env_send_queue.put(command)
+            display.env_send_queue.send(command.encode("utf-8"))
         
             # Wait for response, until env is done parsing. This is basically syncing
-            msg = display.env_recv_queue.get()
+            msg, _ = display.env_recv_queue.receive()
+            msg = msg.decode("utf-8")
             
             # If env tells us to quit, we do. This should only happen when we receive a quit token 
             if msg == "quit":
@@ -41,8 +43,8 @@ def main():
                 print(msg)
     except (KeyboardInterrupt, EOFError):
         print()
-        display.env_send_queue.put("quit") #Tell env to wrap up
-        display.env_recv_queue.get(timeout=5) #Wait env tells us he's done (or timeout)
+        display.env_send_queue.send("quit".encode("utf-8")) #Tell env to wrap up
+        msg, _ = display.env_recv_queue.receive(timeout=5) #Wait env tells us he's done (or timeout)
         sleep(.2) #Wait a bit more for env to actually finish its exit sequence
     finally:
         # Close everything on our end
@@ -51,8 +53,14 @@ def main():
         display.env_send_queue.close()
         display.env_recv_queue.close()
         # Clean up message queues
-        display.env_send_queue.unlink()
-        display.env_recv_queue.unlink()
+        try:
+            display.env_send_queue.unlink()
+        except posix_ipc.ExistentialError:
+            pass
+        try:
+            display.env_recv_queue.unlink()
+        except posix_ipc.ExistentialError:
+            pass
     
 if __name__ == "__main__":
     main()

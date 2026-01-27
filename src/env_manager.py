@@ -9,7 +9,6 @@ from threading import Thread
 import posix_ipc
 
 from individual import IndividualType
-from message_queue import MessageQueue
 from parser import parse_command
 
 LISTEN_ADDRESS = "127.0.0.1"
@@ -23,10 +22,10 @@ SEM_NAME = "/circle_of_life_sem"
 TOTAL_SIZE = 4 + (POPULATION_LIMIT * 8) #1 byte type + 4 bytes energy + 3 bytes padding pre individual
 
 class EnvState:
-    def __init__(self, send_queue: MessageQueue, recv_queue: MessageQueue):
+    def __init__(self, send_queue: posix_ipc.MessageQueue, recv_queue: posix_ipc.MessageQueue):
         # Configure parser and coms with display
-        self.send_queue: MessageQueue = send_queue
-        self.recv_queue: MessageQueue = recv_queue
+        self.send_queue: posix_ipc.MessageQueue = send_queue
+        self.recv_queue: posix_ipc.MessageQueue = recv_queue
         self.parser_thread: Thread = Thread(target=display_listener, args=(self,))
         self.parser_thread.start()
         
@@ -62,9 +61,10 @@ class EnvState:
 
 def display_listener(env):
     while True:
-        command = env.recv_queue.get()
+        command, _ = env.recv_queue.receive()
+        command = command.decode("utf-8")
         parse_command(command, env)
-        env.send_queue.put('\0')
+        env.send_queue.send('\0'.encode("utf-8"))
 
 def socket_listener(env):
     with socket(AF_INET, SOCK_STREAM) as server_socket:
@@ -94,8 +94,8 @@ def main():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
     # Connect to message queues created by display
-    send_queue = MessageQueue("/env_recv", create=False)
-    recv_queue = MessageQueue("/env_send", create=False)
+    send_queue = posix_ipc.MessageQueue("/env_recv")
+    recv_queue = posix_ipc.MessageQueue("/env_send")
     
     # TODO Add grass generation and rough periods
 

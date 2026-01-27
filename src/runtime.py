@@ -157,7 +157,7 @@ def graceful_exit(env, new_line: bool = False):
     env.mapfile.close()
     env.memory.unlink()
     env.sem.unlink()
-    env.send_queue.put("quit")
+    env.send_queue.send("quit".encode("utf-8"))
     env.send_queue.close()
     env.recv_queue.close()
 
