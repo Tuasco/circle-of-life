@@ -32,7 +32,7 @@ class Individual:
         self.energy: int = 100
         
         
-def join_simulation(individual_type: IndividualType, verbose: bool = False) -> tuple[str, str, int] | None:
+def join_simulation(individual_type: IndividualType, verbose: bool = False) -> tuple[str, str] | None:
     try:
         with socket(AF_INET, SOCK_STREAM) as client_socket:
             client_socket.settimeout(10)
@@ -53,11 +53,11 @@ def join_simulation(individual_type: IndividualType, verbose: bool = False) -> t
             print(f"Connection error: {e}")
         return None
 
-def main(individual_type: IndividualType, verbose: bool = False):
+def main(individual_type: IndividualType, individual_id: int, verbose: bool = False):
     individual = Individual(individual_type)
 
     # Join the simulation over TCP and get shared memories and id
-    mem, sem, individual_id = join_simulation(individual_type, verbose)
+    mem, sem = join_simulation(individual_type, verbose)
     
     # Error or individual_id is None (no slots left)
     if None in [mem, sem, individual_id]:
@@ -69,7 +69,7 @@ def main(individual_type: IndividualType, verbose: bool = False):
     mapfile = mmap.mmap(memory.fd, memory.size)
 
     # Calculate physical address in memory
-    my_offset = 4 + (int(individual_id) * 8)
+    my_offset = 4 + (individual_id * 8)
 
     # Initialize in shared memory (Set Type and Starting Energy)
     type_code = 1 if individual_type.value == "prey" else 2
@@ -77,7 +77,7 @@ def main(individual_type: IndividualType, verbose: bool = False):
     with sem:
         mapfile.seek(my_offset)
         # Pack: B=unsigned char (type), i=integer (energy), 3x=padding
-        mapfile.write(struct.pack("Bi3x", type_code, initial_energy))
+        mapfile.write(struct.pack("=Bi3x", type_code, initial_energy))
 
     while True:
         # TODO add individual logic (probably in functions, one for preys and one for predators)

@@ -35,26 +35,29 @@ class EnvState:
         self.socket_thread.start()
         
         # Configure preys and predators processes lists
-        self.preys_processes: list[Process] = []
-        self.predators_processes: list[Process] = []
+        self.preys_processes: dict[int, Process] = {}
+        self.predators_processes: dict[int, Process] = {}
 
-        # 1. Create Shared Memory
+        # Create zero-filled shared memory
         self.memory = posix_ipc.SharedMemory(SHM_NAME, posix_ipc.O_CREAT, size=TOTAL_SIZE)
         self.mapfile = mmap.mmap(self.memory.fd, self.memory.size)
-
-        # 2. Create Semaphore (Mutex)
+        self.mapfile.seek(0)
+        self.mapfile.write(b'\x00' * TOTAL_SIZE)
         self.sem = posix_ipc.Semaphore(SEM_NAME, posix_ipc.O_CREAT, initial_value=1)
-
-        # 3. Initialize Grass (e.g., to 100)
+        
+        # Initialise grass value
         self.mapfile.seek(0)
         self.mapfile.write(struct.pack("i", GRASS_LIMIT))
 
-        # 4. Manage IDs (Simple stack of free IDs)
-        # IDs range from 0 to 99
+        # Simple stack of free IDs
         self.free_ids = list(range(POPULATION_LIMIT))
+        self.population_limit = POPULATION_LIMIT #Needed for parser
 
     def get_free_id(self) -> int | None:
-        return self.free_ids.pop(0) if self.free_ids else None        
+        return self.free_ids.pop(0) if self.free_ids else None
+
+    def return_id(self, returned_id: int):
+        self.free_ids.append(returned_id)
 
 
 def display_listener(env):
@@ -80,8 +83,8 @@ def add_client(env: EnvState, client_socket: socket, client_address: tuple[str, 
         return
     
     if client_socket.recv(1024).decode().strip() in IndividualType:
-        # If get_free_id() returns None, the individual will get it and terminate itself
-        client_socket.send(f"{env.memory.name} {env.sem.name} {env.get_free_id()}".encode())
+        # Send memory and semaphore names to the joined individual
+        client_socket.send(f"{env.memory.name} {env.sem.name}".encode())
 
     client_socket.shutdown(SHUT_RDWR)
     client_socket.close()

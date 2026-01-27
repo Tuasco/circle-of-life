@@ -1,135 +1,17 @@
 #!/usr/bin/env python3
-import sys
-from multiprocessing import Process
-from threading import Thread
-
-from individual import IndividualType, main as individual_main
-
-
-# TODO implement delete and get rid of no_op
-def execute_command_no_op(arg: int, env):
-    print("execute_command_no_op with argument {}".format(arg))
-
-def add_preys(arg: int, env):
-    added: int = 0
-    
-    for _ in range(arg):
-        # We technically could still add them as they'd kill themselves, but this is nicer for the user
-        if not len(env.free_ids):
-            print("Cannot add more individuals")
-            break
-            
-        added += 1
-        process = Process(target=individual_main, args=(IndividualType.PREY,))
-        env.preys_processes.append(process)
-        process.start()
-
-    print(f"{added} prey(s) added")
-
-def add_predators(arg: int, env):
-    added: int = 0
-    
-    for _ in range(arg):
-        # Same as add_preys() here
-        if not len(env.free_ids):
-            print("Cannot add more individuals")
-            break
-            
-        added += 1        
-        process = Process(target=individual_main, args=(IndividualType.PREDATOR,))
-        env.predators_processes.append(process)
-        process.start()
-        
-    print(f"{added} predator(s) added")
-
-# TODO Change list implemetation (look at the shared memory insteads)
-def list_preys(_, env):
-    if not env.preys_processes:
-        print("No preys currently in.")
-        return
-
-    print("Preys in the simulation:")
-    for prey in env.preys_processes:
-        prey: Process
-        print(f"{prey.name} ({int(prey.pid)})")    
-
-def list_predators(_, env):
-    if not env.predators_processes:
-        print("No predators currently in.")
-        return
-    
-    print("Predators in the simulation:")
-    for predator in env.predators_processes:
-        predator: Process
-        print(f"{predator.name} ({int(predator.pid)})")
-
-def graceful_exit(env, new_line: bool = False):
-    print("{}Exiting...".format('\n' if new_line else ''))
-    
-    # Stop socket listening thread
-    env.socket_thread: Thread
-    env.socket_thread.join(timeout=0)
-    
-    # Clear preys and predators processes
-    # This could be improved by joining them in parallel
-    for proc in env.predators_processes:
-        proc: Process
-        proc.terminate()
-        proc.join()
-        proc.close()
-
-    for proc in env.preys_processes:
-        proc: Process
-        proc.terminate()
-        proc.join()
-        proc.close()
-
-    env.mapfile.close()
-    env.memory.unlink()
-    env.sem.unlink()
-    env.send_queue.put("quit")
-    env.send_queue.close()
-    env.recv_queue.close()
-    
-    sys.exit(0)
-
-def display_help():
-    print("""
-Simulation Interpreter Help:
-Commands format: ACTION TARGET [NUMBER]
-
-ACTIONS:
-- add: Add NUMBER instances of TARGET to the simulation
-- list: List all current TARGET instances
-- delete: Remove NUMBER instances of TARGET from the simulation
-- stop: Stop the simulation and exit
-
-TARGETS:
-- prey: Simulation prey entities
-- predator: Simulation predator entities
-
-EXAMPLES:
-- add prey 5      : Add 5 prey
-- list predator   : Show all predators
-- delete prey 2   : Remove 2 prey
-- stop            : Exit simulation
-- help            : Show this help
-- ?               : Show this help
-
-NUMBER is optional for add/delete; defaults to 1.
-""")
+from runtime import *
 
 # Commands have the following pattern : (ACTION_TOKEN) (TARGET_TOKEN) [integer]
 ACTION_TOKENS = ["add", "list", "delete"]
 QUIT_TOKENS = ["quit", "exit", "stop"]
 HELP_TOKENS = ["help", "?"]
-TARGET_TOKENS = ["prey", "predator"]
+TARGET_TOKENS = ["prey", "predator", "all"]
 
 # Functions corresponding to parsed words' positions
 WORKERS = [
-    [add_preys, add_predators],
-    [list_preys, list_predators],
-    [execute_command_no_op, execute_command_no_op],
+    [add_preys, add_predators, add_all],
+    [list_preys, list_predators, list_all],
+    [delete_preys, delete_predators, delete_all],
 ]
 
 def parse_command(command: str, env):
