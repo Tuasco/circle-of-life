@@ -10,6 +10,7 @@ from time import sleep
 
 import posix_ipc
 
+from CONSTS import *
 from individual import IndividualType
 from parser import parse_command
 
@@ -17,22 +18,21 @@ LISTEN_ADDRESS = "127.0.0.1"
 LISTEN_PORT = 15789
 LISTEN_LIMIT = 5
 
-MIN_GRASS_WAIT = 1
+MIN_GRASS_WAIT = 2
 MAX_GRASS_WAIT = 5
 SHIT_HAPPENS_INTERVAL = 40
 SHIT_HAPPENS_DURATION = 3
 
-POPULATION_LIMIT = 10
-GRASS_LIMIT = 4
+GRASS_LIMIT = 5
 SHM_NAME = "/circle_of_life_shm"
 SEM_NAME = "/circle_of_life_sem"
-TOTAL_SIZE = 4 + (POPULATION_LIMIT * 8) #1 byte type + 4 bytes energy + 3 bytes padding pre individual
+TOTAL_SIZE = 5 + (POPULATION_LIMIT * 8) #1 byte type + 4 bytes energy + 3 bytes padding pre individual
 
 class EnvState:
-    def __init__(self, send_queue: posix_ipc.MessageQueue, recv_queue: posix_ipc.MessageQueue):
+    def __init__(self):
         # Configure parser and coms with display
-        self.send_queue: posix_ipc.MessageQueue = send_queue
-        self.recv_queue: posix_ipc.MessageQueue = recv_queue
+        self.send_queue: posix_ipc.MessageQueue = posix_ipc.MessageQueue("/env_recv")
+        self.recv_queue: posix_ipc.MessageQueue = posix_ipc.MessageQueue("/env_send")
         self.parser_thread: Thread = Thread(target=display_listener, args=(self,))
         self.parser_thread.start()
         
@@ -48,9 +48,9 @@ class EnvState:
         self.mapfile.seek(0)
         self.mapfile.write(b'\x00' * TOTAL_SIZE)
         self.sem = posix_ipc.Semaphore(SEM_NAME, posix_ipc.O_CREAT, initial_value=1)
-        # Initialise grass value
+        # Initialise death indicator and grass value
         self.mapfile.seek(0)
-        self.mapfile.write(struct.pack("i", GRASS_LIMIT))
+        self.mapfile.write(struct.pack("=Bi", 0, GRASS_LIMIT))
         # Simple stack of free IDs
         self.free_ids = list(range(POPULATION_LIMIT))
         self.population_limit = POPULATION_LIMIT #Needed for parser
@@ -105,38 +105,69 @@ def add_client(env: EnvState, client_socket: socket, client_address: tuple[str, 
     client_socket.shutdown(SHUT_RDWR)
     client_socket.close()
 
+def cleanup_dead_individuals(env: EnvState):
+    """Silent cleanup of processes marked as dead in shared memory."""
+    for processes_dict in [env.preys_processes, env.predators_processes]:
+        for slot_id in list(processes_dict.keys()):
+            offset = 5 + (slot_id * 8)
+            with env.sem:
+                env.mapfile.seek(offset)
+                data = env.mapfile.read(8)
+            type_code, _ = struct.unpack("=Bi3x", data)
+
+            if type_code != 0:
+                continue
+            
+            # Happy path: the individual died, we must clean them up
+            # Kill process and remove it from dict of processes
+            proc = processes_dict.pop(slot_id)
+            if proc.is_alive():
+                proc.terminate()
+            proc.join()
+            proc.close()
+
+            # Zero out the slot and return the ID
+            with env.sem:
+                env.mapfile.seek(offset)
+                env.mapfile.write(b'\x00' * 8)
+            env.return_id(slot_id)
+            
+            print(f"deleted indv if {slot_id}, type_code: {type_code}")
+            
+    with env.sem:
+        env.mapfile.seek(0)
+        env.mapfile.write(struct.pack("B", 0))
 
 def grass(env: EnvState):
     while True:
         sleep(randint(MIN_GRASS_WAIT, MAX_GRASS_WAIT))
         
         # Check if a drought episode is occuring
-        # Aquiring the lock before reading would prevent a TOCTOU, but it wouldn't be an issue regardless
+        # Acquiring the lock before reading would prevent a TOCTOU, but it wouldn't be an issue regardless
         if env.drought_remaining > 0:
             with env.drought_lock:
                 env.drought_remaining -= 1
             continue
         
         # Add one grass (stonks)
-        current_grass = 0
         with env.sem:
             env.mapfile.seek(0)
-            current_grass = struct.unpack("=i", env.mapfile.read(4))[0]
+            event, current_grass = struct.unpack("=Bi", env.mapfile.read(5))
             
             if current_grass < GRASS_LIMIT:
-                env.mapfile.seek(0)
+                env.mapfile.seek(1)
                 env.mapfile.write(struct.pack("i", current_grass + 1))
-        
+                
+        # If and event happen, process it
+        if event == 1:
+            cleanup_dead_individuals(env)
+
     return
+
 
 def main():
     # Catch SIG_INT as display handles it. This file is not meant to be executed anyway, hence the shebang.
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-    # Connect to message queues created by display
-    send_queue = posix_ipc.MessageQueue("/env_recv")
-    recv_queue = posix_ipc.MessageQueue("/env_send")
     
-    # TODO Add grass generation and rough periods
-
-    env = EnvState(send_queue, recv_queue)
+    # Do not even need to collect the object
+    EnvState()

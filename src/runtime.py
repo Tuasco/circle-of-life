@@ -48,9 +48,9 @@ def add_all(arg: int, env):
     
 def add_grass(arg: int, env):
     with env.sem:
-        env.mapfile.seek(0)
+        env.mapfile.seek(1)
         current_grass = struct.unpack("=i", env.mapfile.read(4))[0]
-        env.mapfile.seek(0)
+        env.mapfile.seek(1)
         env.mapfile.write(struct.pack("i", current_grass + arg))
 
 
@@ -61,7 +61,7 @@ def list_preys(_, env):
     with env.sem:
         for i in range(env.population_limit):
             # Move the cursor to position and read
-            env.mapfile.seek(4 + (i * 8))
+            env.mapfile.seek(5 + (i * 8))
             data = env.mapfile.read(8)
             type_code, energy = struct.unpack("=Bi3x", data)
 
@@ -81,7 +81,7 @@ def list_predators(_, env):
     with env.sem:
         for i in range(env.population_limit):
             # Move the cursor to position and read
-            env.mapfile.seek(4 + (i * 8))
+            env.mapfile.seek(5 + (i * 8))
             data = env.mapfile.read(8)
             type_code, energy = struct.unpack("=Bi3x", data)
 
@@ -102,7 +102,7 @@ def list_all(_, env):
 def list_grass(_, env):
     current_grass = 0
     with env.sem:
-        env.mapfile.seek(0)
+        env.mapfile.seek(1)
         current_grass = struct.unpack("=i", env.mapfile.read(4))[0]
         
     print(f"Total: {current_grass} grass")
@@ -127,7 +127,7 @@ def _delete_individuals(env, processes_dict, count_to_delete, label):
             proc.join()
 
         # Clean the Shared Memory
-        offset = 4 + (slot_id * 8)
+        offset = 5 + (slot_id * 8)
         with env.sem:
             env.mapfile.seek(offset)
             env.mapfile.write(b'\x00' * 8)
@@ -151,9 +151,9 @@ def delete_all(arg: int, env):
 def delete_grass(arg: int, env):
     current_grass = 0
     with env.sem:
-        env.mapfile.seek(0)
+        env.mapfile.seek(1)
         current_grass = struct.unpack("=i", env.mapfile.read(4))[0]
-        env.mapfile.seek(0)
+        env.mapfile.seek(1)
         env.mapfile.write(struct.pack("i", min(0, current_grass - arg)))
 
     print(f"Removed {min(arg, current_grass)} grass.")
